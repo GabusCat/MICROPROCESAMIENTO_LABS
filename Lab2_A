@@ -1,0 +1,1660 @@
+;==============================================================================
+; PROGRAMA: 16 LEDs con 3 modos de secuencia (Ensamblador)
+; PIC: 16F887
+;==============================================================================
+
+    PROCESSOR 16F887
+    #include <xc.inc>                ; Definiciones del PIC
+
+;------------------------------------------------------------------------------
+; BITS DE CONFIGURACIÓN (FUSES)
+;------------------------------------------------------------------------------
+    __CONFIG _CONFIG1, _INTRC_OSC_NOCLKOUT & _WDT_OFF & _PWRTE_ON & _MCLRE_ON & _CP_OFF & _CPD_OFF & _BOREN_ON & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+    __CONFIG _CONFIG2, _BOR4V_BOR40V & _WRT_OFF & _DEBUG_OFF
+
+;------------------------------------------------------------------------------
+; VARIABLES EN RAM (Banco 0)
+;------------------------------------------------------------------------------
+    CBLOCK 0x20
+        d1, d2, d3          ; Para delay de 1ms
+        ms_low, ms_high     ; Contador de 16 bits para delay en ms
+    ENDC
+
+;------------------------------------------------------------------------------
+; VECTOR DE RESET
+;------------------------------------------------------------------------------
+    ORG     0x00
+    GOTO    main
+
+;==============================================================================
+; SUBRUTINAS DE DELAY
+;==============================================================================
+
+;-------------------------------------------------------------------------------
+; delay_1ms: Genera un retardo aproximado de 1 ms con oscilador de 8 MHz
+;-------------------------------------------------------------------------------
+delay_1ms:
+    MOVLW   0xFA            ; 250
+    MOVWF   d2
+d1ms_outer:
+    MOVLW   0x08            ; 8
+    MOVWF   d3
+d1ms_inner:
+    DECFSZ  d3, F
+    GOTO    d1ms_inner
+    DECFSZ  d2, F
+    GOTO    d1ms_outer
+    RETURN
+
+;-------------------------------------------------------------------------------
+; delay_ms16: Retardo en milisegundos usando contador de 16 bits (ms_high:ms_low)
+;-------------------------------------------------------------------------------
+delay_ms16:
+    MOVF    ms_high, W
+    IORWF   ms_low, W
+    BTFSC   STATUS, Z
+    RETURN
+    CALL    delay_1ms
+    MOVLW   1
+    SUBWF   ms_low, F
+    BTFSS   STATUS, C
+    DECF    ms_high, F
+    GOTO    delay_ms16
+
+;==============================================================================
+; PROGRAMA PRINCIPAL
+;==============================================================================
+main:
+    ;--- Configurar oscilador interno a 8 MHz ---
+    BANKSEL OSCCON
+    MOVLW   0x77            ; IRCF = 111 (8 MHz)
+    MOVWF   OSCCON
+wait_hts:
+    BTFSS   OSCCON, 2       ; Bit HTS (bit 2) = 1 cuando el oscilador de alta frecuencia es estable
+    GOTO    wait_hts
+
+    ;--- Configurar puertos ---
+    BANKSEL TRISB
+    CLRF    TRISB           ; RB0-RB7 como salidas
+    BANKSEL TRISD
+    CLRF    TRISD           ; RD0-RD7 como salidas
+    BANKSEL TRISC
+    BSF     TRISC, 1        ; RC1 como entrada
+    BSF     TRISC, 2        ; RC2 como entrada
+    BSF     TRISC, 3        ; RC3 como entrada
+
+    ;--- Inicializar LEDs apagados ---
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+
+;--- Bucle principal ---
+main_loop:
+    ; Verificar interruptor RC1
+    BANKSEL PORTC
+    BTFSC   PORTC, 1        ; ¿RC1 = 0? (presionado)
+    GOTO    check_rc2
+    CALL    modo1
+    GOTO    main_delay
+
+check_rc2:
+    BTFSC   PORTC, 2        ; ¿RC2 = 0?
+    GOTO    check_rc3
+    CALL    modo2
+    GOTO    main_delay
+
+check_rc3:
+    BTFSC   PORTC, 3        ; ¿RC3 = 0?
+    GOTO    apagar
+    CALL    modo3
+    GOTO    main_delay
+
+apagar:
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+
+main_delay:
+    ; Pequeño delay de 20 ms para evitar rebotes
+    CLRF    ms_high
+    MOVLW   20
+    MOVWF   ms_low
+    CALL    delay_ms16
+    GOTO    main_loop
+
+;==============================================================================
+; MODO 1: Secuencia de izquierda a derecha (RC1 presionado)
+;==============================================================================
+modo1:
+modo1_start:
+    BANKSEL PORTC
+    BTFSC   PORTC, 1        ; Salir si RC1 se ha soltado
+    RETURN
+
+    ;--- Lista de 34 pasos con delay de 50 ms cada uno ---
+    ; Paso 1:  PORTB = 0b00000001, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 2:  PORTB = 0b00000011, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x03
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 3:  PORTB = 0b00000111, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x07
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 4:  PORTB = 0b00001110, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x0E
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 5:  PORTB = 0b00011100, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x1C
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 6:  PORTB = 0b00111000, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x38
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 7:  PORTB = 0b01110000, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0x70
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 8:  PORTB = 0b11100000, PORTD = 0
+    BANKSEL PORTB
+    MOVLW   0xE0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 9:  PORTB = 0b11000000, PORTD = 0b00000001
+    BANKSEL PORTB
+    MOVLW   0xC0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x01
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 10: PORTB = 0b10000000, PORTD = 0b00000011
+    BANKSEL PORTB
+    MOVLW   0x80
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x03
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 11: PORTB = 0b00000000, PORTD = 0b00000111
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x07
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 12: PORTB = 0b00000000, PORTD = 0b00001110
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x0E
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 13: PORTB = 0b00000000, PORTD = 0b00011100
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x1C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 14: PORTB = 0b00000000, PORTD = 0b00111000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x38
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 15: PORTB = 0b00000000, PORTD = 0b01110000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x70
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 16: PORTB = 0b00000000, PORTD = 0b11100000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0xE0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 17: PORTB = 0b00000000, PORTD = 0b11000000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0xC0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 18: PORTB = 0b00000000, PORTD = 0b10000000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 19: PORTB = 0b00000000, PORTD = 0b11000000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0xC0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 20: PORTB = 0b00000000, PORTD = 0b11100000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0xE0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 21: PORTB = 0b00000000, PORTD = 0b01110000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x70
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 22: PORTB = 0b00000000, PORTD = 0b00111000
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x38
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 23: PORTB = 0b00000000, PORTD = 0b00011100
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x1C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 24: PORTB = 0b00000000, PORTD = 0b00001110
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x0E
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 25: PORTB = 0b00000000, PORTD = 0b00000111
+    BANKSEL PORTB
+    CLRF    PORTB
+    BANKSEL PORTD
+    MOVLW   0x07
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 26: PORTB = 0b10000000, PORTD = 0b00000011
+    BANKSEL PORTB
+    MOVLW   0x80
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x03
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 27: PORTB = 0b11000000, PORTD = 0b00000001
+    BANKSEL PORTB
+    MOVLW   0xC0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x01
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 28: PORTB = 0b11100000, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0xE0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 29: PORTB = 0b01110000, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x70
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 30: PORTB = 0b00111000, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x38
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 31: PORTB = 0b00011100, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x1C
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 32: PORTB = 0b00001110, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x0E
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 33: PORTB = 0b00000111, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x07
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 34: PORTB = 0b00000011, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x03
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 35: PORTB = 0b00000001, PORTD = 0b00000000
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    CLRF    PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    GOTO    modo1_start
+
+;==============================================================================
+; MODO 2: Secuencia doble (RC2 presionado)
+;==============================================================================
+modo2:
+modo2_start:
+    BANKSEL PORTC
+    BTFSC   PORTC, 2
+    RETURN
+
+    ; Paso 1: PORTB = 0b00000001, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 2: PORTB = 0b00000011, PORTD = 0b11000000
+    BANKSEL PORTB
+    MOVLW   0x03
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0xC0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 3: PORTB = 0b00000111, PORTD = 0b11100000
+    BANKSEL PORTB
+    MOVLW   0x07
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0xE0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 4: PORTB = 0b00001110, PORTD = 0b01110000
+    BANKSEL PORTB
+    MOVLW   0x0E
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x70
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 5: PORTB = 0b00011100, PORTD = 0b00111000
+    BANKSEL PORTB
+    MOVLW   0x1C
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x38
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 6: PORTB = 0b00111000, PORTD = 0b00011100
+    BANKSEL PORTB
+    MOVLW   0x38
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x1C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 7: PORTB = 0b01110000, PORTD = 0b00001110
+    BANKSEL PORTB
+    MOVLW   0x70
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0E
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 8: PORTB = 0b11100000, PORTD = 0b00000111
+    BANKSEL PORTB
+    MOVLW   0xE0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x07
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 9: PORTB = 0b11000000, PORTD = 0b00000011
+    BANKSEL PORTB
+    MOVLW   0xC0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x03
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 10: PORTB = 0b10000000, PORTD = 0b00000001
+    BANKSEL PORTB
+    MOVLW   0x80
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x01
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 11: PORTB = 0b11000000, PORTD = 0b00000011
+    BANKSEL PORTB
+    MOVLW   0xC0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x03
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 12: PORTB = 0b11100000, PORTD = 0b00000111
+    BANKSEL PORTB
+    MOVLW   0xE0
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x07
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 13: PORTB = 0b01110000, PORTD = 0b00001110
+    BANKSEL PORTB
+    MOVLW   0x70
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0E
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 14: PORTB = 0b00111000, PORTD = 0b00011100
+    BANKSEL PORTB
+    MOVLW   0x38
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x1C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 15: PORTB = 0b00011100, PORTD = 0b00111000
+    BANKSEL PORTB
+    MOVLW   0x1C
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x38
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 16: PORTB = 0b00001110, PORTD = 0b01110000
+    BANKSEL PORTB
+    MOVLW   0x0E
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x70
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 17: PORTB = 0b00000111, PORTD = 0b11100000
+    BANKSEL PORTB
+    MOVLW   0x07
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0xE0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 18: PORTB = 0b00000011, PORTD = 0b11000000
+    BANKSEL PORTB
+    MOVLW   0x03
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0xC0
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 19: PORTB = 0b00000001, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    GOTO    modo2_start
+
+;==============================================================================
+; MODO 3: Secuencia triple con delays progresivos (RC3 presionado)
+;==============================================================================
+modo3:
+modo3_start:
+    BANKSEL PORTC
+    BTFSC   PORTC, 3
+    RETURN
+
+    ; ===== 1000 ms =====
+    ; Paso 1: PORTB = 0b00000001, PORTD = 0b10000100
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x84
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 2: PORTB = 0b00000010, PORTD = 0b01000010
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x42
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 3: PORTB = 0b00000100, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 4: PORTB = 0b10001000, PORTD = 0b00010000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x10
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 5: PORTB = 0b01010000, PORTD = 0b00001000
+    BANKSEL PORTB
+    MOVLW   0x50
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x08
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 6: PORTB = 0b00110000, PORTD = 0b00001000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x08
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 800 ms =====
+    ; Paso 7: PORTB = 0b00110000, PORTD = 0b00001000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x08
+    MOVWF   PORTD
+    MOVLW   HIGH(800)
+    MOVWF   ms_high
+    MOVLW   LOW(800)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 8: PORTB = 0b01001000, PORTD = 0b00001000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x08
+    MOVWF   PORTD
+    MOVLW   HIGH(800)
+    MOVWF   ms_high
+    MOVLW   LOW(800)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 9: PORTB = 0b10000100, PORTD = 0b00001000
+    BANKSEL PORTB
+    MOVLW   0x84
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x08
+    MOVWF   PORTD
+    MOVLW   HIGH(800)
+    MOVWF   ms_high
+    MOVLW   LOW(800)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 10: PORTB = 0b00000010, PORTD = 0b00001001
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x09
+    MOVWF   PORTD
+    MOVLW   HIGH(800)
+    MOVWF   ms_high
+    MOVLW   LOW(800)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 11: PORTB = 0b00000001, PORTD = 0b00001010
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0A
+    MOVWF   PORTD
+    MOVLW   HIGH(800)
+    MOVWF   ms_high
+    MOVLW   LOW(800)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 12: PORTB = 0b00000010, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    MOVLW   HIGH(800)
+    MOVWF   ms_high
+    MOVLW   LOW(800)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 400 ms =====
+    ; Paso 13: PORTB = 0b00000010, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    MOVLW   HIGH(400)
+    MOVWF   ms_high
+    MOVLW   LOW(400)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 14: PORTB = 0b00000100, PORTD = 0b00010010
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x12
+    MOVWF   PORTD
+    MOVLW   HIGH(400)
+    MOVWF   ms_high
+    MOVLW   LOW(400)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 15: PORTB = 0b00000100, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    MOVLW   HIGH(400)
+    MOVWF   ms_high
+    MOVLW   LOW(400)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 16: PORTB = 0b10001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    MOVLW   HIGH(400)
+    MOVWF   ms_high
+    MOVLW   LOW(400)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 17: PORTB = 0b01001000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    MOVLW   HIGH(400)
+    MOVWF   ms_high
+    MOVLW   LOW(400)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 18: PORTB = 0b00110000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    MOVLW   HIGH(400)
+    MOVWF   ms_high
+    MOVLW   LOW(400)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 200 ms =====
+    ; Paso 19: PORTB = 0b01001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    MOVLW   HIGH(200)
+    MOVWF   ms_high
+    MOVLW   LOW(200)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 20: PORTB = 0b10000100, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x84
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    MOVLW   HIGH(200)
+    MOVWF   ms_high
+    MOVLW   LOW(200)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 21: PORTB = 0b00000010, PORTD = 0b00010001
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x11
+    MOVWF   PORTD
+    MOVLW   HIGH(200)
+    MOVWF   ms_high
+    MOVLW   LOW(200)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 22: PORTB = 0b00000001, PORTD = 0b00001010
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0A
+    MOVWF   PORTD
+    MOVLW   HIGH(200)
+    MOVWF   ms_high
+    MOVLW   LOW(200)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 23: PORTB = 0b00000010, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    MOVLW   HIGH(200)
+    MOVWF   ms_high
+    MOVLW   LOW(200)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 100 ms =====
+    ; Paso 24: PORTB = 0b00000010, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    MOVLW   HIGH(100)
+    MOVWF   ms_high
+    MOVLW   LOW(100)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 25: PORTB = 0b00000100, PORTD = 0b00010010
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x12
+    MOVWF   PORTD
+    MOVLW   HIGH(100)
+    MOVWF   ms_high
+    MOVLW   LOW(100)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 26: PORTB = 0b00000100, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    MOVLW   HIGH(100)
+    MOVWF   ms_high
+    MOVLW   LOW(100)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 27: PORTB = 0b10001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    MOVLW   HIGH(100)
+    MOVWF   ms_high
+    MOVLW   LOW(100)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 28: PORTB = 0b01001000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    MOVLW   HIGH(100)
+    MOVWF   ms_high
+    MOVLW   LOW(100)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 29: PORTB = 0b00110000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    MOVLW   HIGH(100)
+    MOVWF   ms_high
+    MOVLW   LOW(100)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 50 ms =====
+    ; Paso 30: PORTB = 0b00110000, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 31: PORTB = 0b01001000, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 32: PORTB = 0b10000100, PORTD = 0b00010000
+    BANKSEL PORTB
+    MOVLW   0x84
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x10
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 33: PORTB = 0b00000010, PORTD = 0b00010001
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x11
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 34: PORTB = 0b00000001, PORTD = 0b00001010
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0A
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 35: PORTB = 0b00000010, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   50
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 25 ms =====
+    ; Paso 36: PORTB = 0b00000100, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   25
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 37: PORTB = 0b00000100, PORTD = 0b00010010
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x12
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   25
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 38: PORTB = 0b00001000, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x08
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   25
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 39: PORTB = 0b10001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   25
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 40: PORTB = 0b01010000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x50
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   25
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 41: PORTB = 0b00110000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   25
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 12 ms =====
+    ; Paso 42: PORTB = 0b00110000, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   12
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 43: PORTB = 0b01001000, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   12
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 44: PORTB = 0b10000100, PORTD = 0b00010000
+    BANKSEL PORTB
+    MOVLW   0x84
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x10
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   12
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 45: PORTB = 0b00000010, PORTD = 0b00010001
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x11
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   12
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 46: PORTB = 0b00000001, PORTD = 0b00001010
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0A
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   12
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 47: PORTB = 0b00000010, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   12
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 6 ms =====
+    ; Paso 48: PORTB = 0b00000100, PORTD = 0b00001100
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x0C
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   6
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 49: PORTB = 0b00000100, PORTD = 0b00010010
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x12
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   6
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 50: PORTB = 0b00001000, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x08
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   6
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 51: PORTB = 0b10001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   6
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 52: PORTB = 0b01010000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x50
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   6
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 53: PORTB = 0b00110000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x30
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   6
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 3 ms =====
+    ; Paso 54: PORTB = 0b01001000, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 55: PORTB = 0b10000100, PORTD = 0b00010000
+    BANKSEL PORTB
+    MOVLW   0x84
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x10
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 56: PORTB = 0b00000010, PORTD = 0b00001001
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x09
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 57: PORTB = 0b00000001, PORTD = 0b00000110
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x06
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 58: PORTB = 0b00000010, PORTD = 0b00010010
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x12
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 59: PORTB = 0b00000100, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 60: PORTB = 0b10001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 61: PORTB = 0b01010000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x50
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   3
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; ===== 2 ms (final) =====
+    ; Paso 62: PORTB = 0b01001000, PORTD = 0b00100000
+    BANKSEL PORTB
+    MOVLW   0x48
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x20
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 63: PORTB = 0b10000100, PORTD = 0b00010000
+    BANKSEL PORTB
+    MOVLW   0x84
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x10
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 64: PORTB = 0b00000010, PORTD = 0b00001001
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x09
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 65: PORTB = 0b00000001, PORTD = 0b00000110
+    BANKSEL PORTB
+    MOVLW   0x01
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x06
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 66: PORTB = 0b00000010, PORTD = 0b00010010
+    BANKSEL PORTB
+    MOVLW   0x02
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x12
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 67: PORTB = 0b00000100, PORTD = 0b00100001
+    BANKSEL PORTB
+    MOVLW   0x04
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x21
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 68: PORTB = 0b10001000, PORTD = 0b01000000
+    BANKSEL PORTB
+    MOVLW   0x88
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x40
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Paso 69: PORTB = 0b01010000, PORTD = 0b10000000
+    BANKSEL PORTB
+    MOVLW   0x50
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0x80
+    MOVWF   PORTD
+    CLRF    ms_high
+    MOVLW   2
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    ; Final: todos los LEDs encendidos 1 segundo
+    BANKSEL PORTB
+    MOVLW   0xFF
+    MOVWF   PORTB
+    BANKSEL PORTD
+    MOVLW   0xFF
+    MOVWF   PORTD
+    MOVLW   HIGH(1000)
+    MOVWF   ms_high
+    MOVLW   LOW(1000)
+    MOVWF   ms_low
+    CALL    delay_ms16
+
+    GOTO    modo3_start
+
+;==============================================================================
+    END
