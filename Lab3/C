@@ -1,0 +1,105 @@
+#pragma config FOSC = INTRC_NOCLKOUT
+#pragma config WDTE = OFF
+#pragma config PWRTE = ON
+#pragma config MCLRE = ON
+#pragma config CP = OFF
+#pragma config CPD = OFF
+#pragma config BOREN = ON
+#pragma config IESO = OFF
+#pragma config FCMEN = OFF
+#pragma config LVP = OFF
+
+#pragma config BOR4V = BOR40V
+#pragma config WRT = OFF
+#pragma config DEBUG = OFF
+
+#define _XTAL_FREQ 8000000
+#include <xc.h>
+
+// Función para convertir BCD empaquetado (8 bits) a entero (0-99)
+unsigned char bcd_to_int(unsigned char bcd) {
+    unsigned char dec = (bcd >> 4) & 0x0F;
+    unsigned char uni = bcd & 0x0F;
+    // Validación: si algún dígito >9, retorna 255 (error)
+    if (dec > 9 || uni > 9) return 255;
+    return dec * 10 + uni;
+}
+
+// Función para mostrar resultado de 16 bits en LEDs (PORTD y PORTA)
+void mostrar_resultado(unsigned int x) {
+    PORTD = x & 0xFF;        // bits 0-7
+    PORTA = (x >> 8) & 0x3F; // bits 8-13 (solo 6 bits)
+}
+
+void main(void) {
+    // 1. Configurar oscilador interno a 8 MHz
+    OSCCONbits.IRCF = 0b111;
+    while (!OSCCONbits.HTS); // no se puede simular con esto en SimulIDE
+    
+    // 2. Desactivar entradas analógicas (todos los puertos digitales)
+    ANSEL = 0x00;
+    ANSELH = 0x00;
+    
+    // 3. Configurar pines
+    // Puerto B y C como entradas (TRIS = 1)
+    TRISB = 0xFF;   // RB0-RB7 entradas
+    TRISC = 0xFF;   // RC0-RC7 entradas
+    // Puerto D y A como salidas
+    TRISD = 0x00;   // RD0-RD7 salidas
+    TRISA = 0x00;   // RA0-RA7 salidas (usaremos RA0-RA5)
+    
+    OPTION_REGbits.nRBPU = 1; 
+    WPUB = 0x00; 
+    
+    // 4. Inicializar salidas
+    PORTD = 0x00;
+    PORTA = 0x00;
+    
+    // 5. Bucle principal
+    while (1) {
+        // Leer los valores BCD de los puertos
+        unsigned char a_bcd = PORTB;
+        unsigned char b_bcd = PORTC;
+        
+        // Convertir a enteros
+        unsigned char a = bcd_to_int(a_bcd);
+        unsigned char b = bcd_to_int(b_bcd);
+        
+        unsigned int x = 0;
+        unsigned char error = 0;
+        
+        // Verificar si hubo error en la conversión (dígito >9)
+        if (a == 255 || b == 255) {
+            error = 1;
+            x = 0;
+        } else {
+            // Comparar y calcular según el caso
+            if (a > b) {
+                x = (unsigned int)a * (unsigned int)b;
+            } else if (a == b) {
+                x = a + b;
+            } else { // a < b
+                if (a == 0) {
+                    // División entre cero: error
+                    error = 1;
+                    x = 0;
+                } else {
+                    x = b / a;   // división entera
+                }
+            }
+        }
+        
+        // Mostrar resultado (si hay error, se muestran todos los LEDs apagados y RA0 encendido)
+        if (error) {
+            PORTD = 0x00;
+            PORTA = 0x01;   // RA0 = 1 (LED de error)
+        } else {
+            mostrar_resultado(x);
+            // Apagar LED de error si existiera
+            PORTA &= 0xFE;  // RA0 = 0
+        }
+        
+        // Pequeño delay para evitar refresco excesivo (opcional)
+        __delay_ms(50);
+    }
+}
