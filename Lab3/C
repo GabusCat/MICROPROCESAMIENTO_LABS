@@ -95,8 +95,6 @@ void main(void) {
             PORTA = 0x01;   // RA0 = 1 (LED de error)
         } else {
             mostrar_resultado(x);
-            // Apagar LED de error si existiera
-            PORTA &= 0xFE;  // RA0 = 0
         }
         
         // Pequeño delay para evitar refresco excesivo (opcional)
