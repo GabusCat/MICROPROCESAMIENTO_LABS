@@ -1,0 +1,180 @@
+#pragma config FOSC = INTRC_NOCLKOUT
+#pragma config WDTE = OFF
+#pragma config PWRTE = ON
+#pragma config MCLRE = ON
+#pragma config CP = OFF
+#pragma config CPD = OFF
+#pragma config BOREN = ON
+#pragma config IESO = OFF
+#pragma config FCMEN = OFF
+#pragma config LVP = OFF
+#pragma config BOR4V = BOR40V
+#pragma config WRT = OFF
+#pragma config DEBUG = OFF
+
+#define _XTAL_FREQ 8000000
+#include <xc.h>
+
+// Función para convertir BCD empaquetado (8 bits) a entero (0-99)
+unsigned char bcd_to_int(unsigned char bcd) {
+    unsigned char dec = (bcd >> 4) & 0x0F;
+    unsigned char uni = bcd & 0x0F;
+    
+    // Validación
+    if (dec > 9 || uni > 9) return 255;
+    return (dec * 10) + uni;
+}
+
+// Función para división con redondeo
+unsigned int division_redondeo(unsigned char dividendo, unsigned char divisor) {
+    unsigned int cociente;
+    unsigned int residuo;
+    
+    if (divisor == 0) return 0;
+    
+    cociente = dividendo / divisor;
+    residuo = dividendo % divisor;
+    
+    // Redondeo: si residuo >= divisor/2, incrementar cociente
+    if (residuo * 2 >= divisor) {
+        cociente++;
+    }
+    
+    return cociente;
+}
+
+// Función para mostrar resultado en BINARIO PURO (14 bits)
+void mostrar_resultado_binario(unsigned int x) {
+    // Limpiar puertos antes de escribir
+    PORTC = 0x00;
+    PORTD = 0x00;
+    
+    // Bits 0-3 -> RC0-RC3
+    PORTC |= (x & 0x0F);
+    
+    // Bits 4-7 -> RC4-RC7
+    PORTC |= ((x >> 4) & 0x0F) << 4;
+    
+    // Bits 8-11 -> RD0-RD3
+    PORTD |= ((x >> 8) & 0x0F);
+    
+    // Bits 12-13 -> RD4-RD5
+    PORTD |= ((x >> 12) & 0x03) << 4;
+}
+
+// Función para mostrar error
+void mostrar_error_parpadeo(void) {
+    for(unsigned char i = 0; i < 4; i++) {
+        PORTC = 0xFF;
+        PORTD = 0x3F;
+        __delay_ms(250);
+        
+        PORTC = 0x00;
+        PORTD = 0x00;
+        __delay_ms(250);
+    }
+}
+
+void mostrar_error_bcd(void) {
+    for(unsigned char i = 0; i < 4; i++) {
+        PORTC = 0xAA;
+        PORTD = 0x15;
+        __delay_ms(250);
+        
+        PORTC = 0x55;
+        PORTD = 0x2A;
+        __delay_ms(250);
+    }
+    PORTC = 0x00;
+    PORTD = 0x00;
+}
+
+void main(void) {
+    unsigned int resultado;
+    unsigned char a, b, error, bcd_error;
+    unsigned char a_bcd, b_bcd;
+    
+    // 1. Configurar oscilador interno a 8 MHz
+    OSCCONbits.IRCF = 0b111;
+    OSCCONbits.SCS = 1;
+    
+    // 2. Desactivar TODAS las entradas analógicas
+    ANSEL = 0x00;    // Puerto A (RA0-RA7) como digitales
+    ANSELH = 0x00;   // Puertos B y C como digitales
+    
+    // 3. Deshabilitar comparadores analógicos
+    CM1CON0 = 0x00;  // Apagar comparador 1
+    CM2CON0 = 0x00;  // Apagar comparador 2
+    
+    // 4. Configurar pines
+    TRISA = 0xFF;    // PORTA como entrada
+    TRISB = 0xFF;    // PORTB como entrada
+    TRISC = 0x00;    // PORTC como salida
+    TRISD = 0x00;    // PORTD como salida
+    
+    // 5. Deshabilitar pull-ups
+    OPTION_REGbits.nRBPU = 1;  // Pull-ups globales deshabilitados
+    WPUB = 0x00;               // Sin pull-ups individuales
+    
+    // 6. Inicializar salidas
+    PORTC = 0x00;
+    PORTD = 0x00;
+    
+    // Delay inicial
+    __delay_ms(100);
+    
+    while (1) {
+        // Leer valores con doble lectura para estabilidad (crítico para RA4)
+        a_bcd = PORTA;
+        __delay_us(5);
+        a_bcd = PORTA;
+        
+        b_bcd = PORTB;
+        __delay_us(5);
+        b_bcd = PORTB;
+        
+        // Convertir a decimal
+        a = bcd_to_int(a_bcd);
+        b = bcd_to_int(b_bcd);
+        
+        error = 0;
+        bcd_error = 0;
+        resultado = 0;
+        
+        // Validar BCD
+        if (a == 255 || b == 255) {
+            error = 1;
+            bcd_error = 1;
+        } 
+        else {
+            // Operaciones según comparación
+            if (a > b) {
+                resultado = (unsigned int)a * (unsigned int)b;
+            } 
+            else if (a == b) {
+                resultado = a + b;
+            } 
+            else { // a < b
+                if (a == 0) {  // Dividir por cero
+                    error = 1;
+                } else {
+                    // CORRECCIÓN: dividir b (mayor) entre a (menor)
+                    resultado = division_redondeo(b, a);
+                }
+            }
+        }
+        
+        // Mostrar resultado o error
+        if (error) {
+            if (bcd_error) {
+                mostrar_error_bcd();
+            } else {
+                mostrar_error_parpadeo();
+            }
+        } else {
+            mostrar_resultado_binario(resultado);
+        }
+        
+        __delay_ms(100);
+    }
+}
